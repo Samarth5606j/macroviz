@@ -53,27 +53,31 @@ function calculateAIInliningDecision(
   callSiteFrequency: number
 ): AIInliningDecision {
   const bytesPerInstruction = 4;
-  const inlinedTotalBytes = Math.max(4, bodyInstructionCount * callSiteFrequency * bytesPerInstruction);
-  const subroutineTotalBytes = (bodyInstructionCount * bytesPerInstruction) + (callSiteFrequency * 4);
+  const safeBodyCount = Math.max(1, bodyInstructionCount);
+  const safeCallFreq = Math.max(1, callSiteFrequency);
+
+  const inlinedTotalBytes = safeBodyCount * safeCallFreq * bytesPerInstruction;
+  const subroutineTotalBytes = (safeBodyCount * bytesPerInstruction) + (safeCallFreq * 4);
 
   // 32 KB (32768 bytes) L1 Instruction Cache threshold
   const l1CacheCapacity = 32768;
   const pressureRatio = Math.min(1.0, inlinedTotalBytes / (l1CacheCapacity * 0.15));
   const l1CacheHitRatePct = Math.max(45, Math.round((1 - pressureRatio) * 99));
 
-  const shouldInline = inlinedTotalBytes < 120 || callSiteFrequency <= 2;
+  // Inline only if footprint is compact (< 64B) OR if subroutine synthesis doesn't actually save bytes
+  const shouldInline = inlinedTotalBytes < 64 || inlinedTotalBytes <= subroutineTotalBytes;
 
   return {
     macroName,
-    bodyInstructionCount: Math.max(1, bodyInstructionCount),
-    callSiteFrequency: Math.max(1, callSiteFrequency),
+    bodyInstructionCount: safeBodyCount,
+    callSiteFrequency: safeCallFreq,
     cacheFootprintBytes: shouldInline ? inlinedTotalBytes : subroutineTotalBytes,
     decision: shouldInline ? 'INLINE' : 'SYNTHESIZE_SUBROUTINE',
     speedupVsSubroutinePct: shouldInline ? 18.5 : -4.2,
     l1CacheHitRatePct,
     rationale: shouldInline 
-      ? `Body instruction count (${bodyInstructionCount}) is compact. Inlining eliminates call/ret branching latency with zero cache thrashing.`
-      : `High call density (${callSiteFrequency} calls) detected. Auto-synthesizing a static subroutine preserves L1i cache locality and saves ${inlinedTotalBytes - subroutineTotalBytes} bytes.`
+      ? `Body instruction count (${safeBodyCount}) across ${safeCallFreq} call(s) is compact (${inlinedTotalBytes}B). Inlining eliminates call/ret branching latency with zero cache thrashing.`
+      : `High call density (${safeCallFreq} calls, ${inlinedTotalBytes}B total) detected. Auto-synthesizing a static subroutine preserves L1i cache locality and saves ${inlinedTotalBytes - subroutineTotalBytes} bytes.`
   };
 }
 
@@ -126,11 +130,15 @@ export function runUnifiedMacroCore(sourceCode: string): { steps: ProcessorStep[
     }
   }
 
+  // Count actual invocations outside MACRO ... MEND blocks only
+  let insideDef = false;
   lines.forEach(l => {
     const t = cleanLine(l);
     if (!t) return;
     const first = tokenize(t)[0]?.toUpperCase();
-    if (preliminaryMNTNames.includes(first)) {
+    if (first === 'MACRO') { insideDef = true; return; }
+    if (first === 'MEND') { insideDef = false; return; }
+    if (!insideDef && preliminaryMNTNames.includes(first)) {
       callFrequencies[first] = (callFrequencies[first] || 0) + 1;
     }
   });
@@ -158,7 +166,6 @@ export function runUnifiedMacroCore(sourceCode: string): { steps: ProcessorStep[
   let currentMdtStartIndex = 1;
   let currentKpdtStartIndex = 1;
   let currentMacroBodyBuffer: string[] = [];
-  let macroStartLine = -1;
 
   for (let i = 0; i < lines.length; i++) {
     const rawLine = lines[i];
@@ -170,7 +177,6 @@ export function runUnifiedMacroCore(sourceCode: string): { steps: ProcessorStep[
 
     if (firstToken === 'MACRO') {
       inMacroDef = true;
-      macroStartLine = i + 1;
       currentMacroBodyBuffer = [];
       steps.push({
         stepNumber: stepCounter++,
