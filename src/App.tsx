@@ -121,7 +121,7 @@ export default function App() {
   const [sourceCode, setSourceCode] = useState<string>(DEMO_PRESETS[0].code);
   const [currentStepIndex, setCurrentStepIndex] = useState<number>(0);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
-  const [playbackSpeed, setPlaybackSpeed] = useState<number>(1000);
+  const [playbackSpeed] = useState<number>(1000);
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const [selectedISA, setSelectedISA] = useState<TargetISA>('RISCV');
   const [activeTab, setActiveTab] = useState<'TABLES' | 'AI_METRICS' | 'SECURITY'>(DEMO_PRESETS[0].defaultTab);
@@ -373,8 +373,8 @@ export default function App() {
           )}
         </section>
 
-        {/* Column 2: Interactive Dynamic Visual Graphs */}
-        <section className="col-span-12 lg:col-span-4 flex flex-col space-y-4">
+        {/* Column 2: Interactive Dynamic Visual Graphs & Classic Tables */}
+        <section className="col-span-12 lg:col-span-4 flex flex-col space-y-4 overflow-hidden">
           
           {/* TAB 1: AI Cache Optimizer & Visual Graphs */}
           {activeTab === 'AI_METRICS' && (
@@ -411,7 +411,6 @@ export default function App() {
                     activeStep.aiMetrics.map((metric, i) => {
                       const progressRatio = Math.min(1, Math.max(0.15, (activeStep.stepNumber / Math.max(1, steps.length))));
                       
-                      // Dynamic heights that expand as you step forward
                       const inlineCycles = Math.min(100, Math.round(metric.bodyInstructionCount * metric.callSiteFrequency * 3.5 * progressRatio));
                       const subCycles = Math.min(100, Math.round(((metric.bodyInstructionCount * 2) + (metric.callSiteFrequency * 10)) * progressRatio));
 
@@ -531,22 +530,120 @@ export default function App() {
             </div>
           )}
 
-          {/* TAB 3: Classic System Tables (MNT / MDT) */}
+          {/* TAB 3: Classic System Tables (MNT / MDT / KPDTAB / ALA) */}
           {activeTab === 'TABLES' && (
             <div className="flex-1 flex flex-col bg-slate-900 rounded-xl border border-slate-800 p-3 overflow-auto space-y-3">
-              <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">MNT Directory</span>
-              <table className="w-full text-left text-xs font-mono">
-                <thead>
-                  <tr className="text-slate-500 border-b border-slate-800">
-                    <th>#</th><th>Name</th><th>#PP</th><th>#KP</th><th>MDT</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800/40">
-                  {activeStep.mnt.map(m => (
-                    <tr key={m.index}><td className="py-1">{m.index}</td><td className="text-cyan-300 font-bold">{m.name}</td><td>{m.ppCount}</td><td>{m.kpCount}</td><td>{m.mdtIndex}</td></tr>
-                  ))}
-                </tbody>
-              </table>
+              {/* 1. MNT */}
+              <div className="bg-slate-950/80 border border-slate-800 rounded-lg p-2.5">
+                <span className="text-[11px] font-bold text-cyan-400 uppercase tracking-wider block mb-1.5">
+                  1. MNT (Macro Name Table)
+                </span>
+                <table className="w-full text-left text-xs font-mono">
+                  <thead>
+                    <tr className="text-slate-500 border-b border-slate-800">
+                      <th className="py-1">#</th><th>Name</th><th>#PP</th><th>#KP</th><th>MDT</th><th>KPDT</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/40">
+                    {activeStep.mnt.length === 0 ? (
+                      <tr><td colSpan={6} className="py-2 text-slate-600 italic">No macros indexed yet</td></tr>
+                    ) : (
+                      activeStep.mnt.map(m => (
+                        <tr key={m.index}>
+                          <td className="py-1 text-slate-400">{m.index}</td>
+                          <td className="text-cyan-300 font-bold">{m.name}</td>
+                          <td>{m.ppCount}</td>
+                          <td>{m.kpCount}</td>
+                          <td>{m.mdtIndex}</td>
+                          <td>{m.kpdtIndex}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* 2. MDT */}
+              <div className="bg-slate-950/80 border border-slate-800 rounded-lg p-2.5">
+                <span className="text-[11px] font-bold text-indigo-400 uppercase tracking-wider block mb-1.5">
+                  2. MDT (Macro Definition Table)
+                </span>
+                <table className="w-full text-left text-xs font-mono">
+                  <thead>
+                    <tr className="text-slate-500 border-b border-slate-800">
+                      <th className="py-1 w-12">Ptr</th><th>Normalized Instruction</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/40">
+                    {activeStep.mdt.length === 0 ? (
+                      <tr><td colSpan={2} className="py-2 text-slate-600 italic">MDT empty</td></tr>
+                    ) : (
+                      activeStep.mdt.map(d => (
+                        <tr key={d.index}>
+                          <td className="py-1 text-slate-400">{d.index}</td>
+                          <td className={d.instruction === 'MEND' ? 'text-amber-400 font-bold' : 'text-slate-200'}>
+                            {d.instruction}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* 3. KPDTAB */}
+              <div className="bg-slate-950/80 border border-slate-800 rounded-lg p-2.5">
+                <span className="text-[11px] font-bold text-amber-400 uppercase tracking-wider block mb-1.5">
+                  3. KPDTAB (Keyword Parameter Default Table)
+                </span>
+                <table className="w-full text-left text-xs font-mono">
+                  <thead>
+                    <tr className="text-slate-500 border-b border-slate-800">
+                      <th className="py-1 w-12">#</th><th>Param</th><th>Default</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/40">
+                    {activeStep.kpdt.length === 0 ? (
+                      <tr><td colSpan={3} className="py-2 text-slate-600 italic">No keyword parameters</td></tr>
+                    ) : (
+                      activeStep.kpdt.map(k => (
+                        <tr key={k.index}>
+                          <td className="py-1 text-slate-400">{k.index}</td>
+                          <td className="text-amber-300">{k.paramName}</td>
+                          <td className="text-slate-200">{k.defaultValue || 'None'}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* 4. ALA */}
+              <div className="bg-slate-950/80 border border-slate-800 rounded-lg p-2.5">
+                <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider block mb-1.5">
+                  4. ALA (Pass 2 Argument List Array)
+                </span>
+                <table className="w-full text-left text-xs font-mono">
+                  <thead>
+                    <tr className="text-slate-500 border-b border-slate-800">
+                      <th className="py-1">Index</th><th>Formal</th><th>Actual Bound</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/40">
+                    {activeStep.ala.length === 0 ? (
+                      <tr><td colSpan={3} className="py-2 text-slate-600 italic">Active during Pass 2 macro expansion</td></tr>
+                    ) : (
+                      activeStep.ala.map((a, idx) => (
+                        <tr key={idx}>
+                          <td className="py-1 text-emerald-400 font-bold">{a.index}</td>
+                          <td className="text-slate-400">{a.formal}</td>
+                          <td className="text-white font-bold">{a.actual}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </section>
